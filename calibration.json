@@ -1,0 +1,27 @@
+{
+  "camera": 1,
+  "card_width": 32.0,
+  "card_height": 24.0,
+  "corners": null,
+  "threshold": 32,
+  "scale_mode": "ruler",
+  "ruler_points": [
+    [
+      767,
+      472
+    ],
+    [
+      1370,
+      460
+    ]
+  ],
+  "ruler_mm": 101.6,
+  "roi": [
+    610,
+    0,
+    950,
+    457
+  ],
+  "follow_ruler": true,
+  "auto_area": true
+}

@@ -1,0 +1,53 @@
+Fastener CV: http://127.0.0.1:8765
+ [INFO] [Filter] Get MessageBus interface succeeded
+ [WARN] [Filter] MessageBus perform initialize in progress
+ [WARN] [Filter] MessageBus perform start in progress
+ [INFO] [Filter] Self joined the MessageBus
+ [INFO] [Filter] Request to get container state
+ [INFO] [Filter] Successfully fetched the GPU details
+ [INFO] [Filter] Found matching GPU for CUDA and D3D
+ [INFO] [Filter] Chosen GPU for D3D: (1) NVIDIA GeForce RTX 2060 : 67941, 0
+ [INFO] [Filter] Core ping success
+ [INFO] [Filter] Core ping success
+ [INFO] [Filter] Core launch init is done
+ [INFO] [Filter] Already initialized core
+ [INFO] [Filter] fmt:2 bpp:24 :640x480
+ [INFO] [Filter] Core ping success
+ [WARN] [Filter] MessageBus perform stop in progress
+ [INFO] [Filter] Re-initializing MessageBus Handler
+ [INFO] [Filter] Request to get container state
+ [WARN] [Filter] MessageBus perform initialize in progress
+ [WARN] [Filter] MessageBus perform start in progress
+ [INFO] [Filter] Successfully fetched the GPU details
+ [INFO] [Filter] Found matching GPU for CUDA and D3D
+ [INFO] [Filter] Chosen GPU for D3D: (1) NVIDIA GeForce RTX 2060 : 67941, 0
+ [INFO] [Filter] fmt:2 bpp:24 :1920x1080
+ [INFO] [Filter] Core ping success
+ [ERR ] [Filter] start stop invalid core response
+ [ERR ] [Filter] start stop invalid core response
+ [ERR ] [Filter] could not start str core
+ [ERR ] [Filter] query surf invalid response -- handle is null
+ [ERR ] [Filter] handle invalid
+ [ERR ] [Filter] query surf invalid response -- handle is null
+ [ERR ] [Filter] handle invalid
+ [ERR ] [Filter] query surf invalid response -- handle is null
+ [ERR ] [Filter] handle invalid
+ [ERR ] [Filter] query surf invalid response -- handle is null
+ [ERR ] [Filter] handle invalid
+ [ERR ] [Filter] query surf invalid response -- handle is null
+ [ERR ] [Filter] handle invalid
+ [ERR ] [Filter] query surf invalid response -- handle is null
+ [ERR ] [Filter] handle invalid
+ [ERR ] [Filter] query surf invalid response -- handle is null
+ [ERR ] [Filter] handle invalid
+ [ERR ] [Filter] query surf invalid response -- handle is null
+ [ERR ] [Filter] handle invalid
+ [ERR ] [Filter] query surf invalid response -- handle is null
+ [ERR ] [Filter] handle invalid
+ [ERR ] [Filter] query surf invalid response -- handle is null
+ [ERR ] [Filter] handle invalid
+ [ERR ] [Filter] query surf invalid response -- handle is null
+ [ERR ] [Filter] handle invalid
+ [ERR ] [Filter] query surf invalid response -- handle is null
+ [ERR ] [Filter] handle invalid
+ [WARN] [Filter] MessageBus perform stop in progress
