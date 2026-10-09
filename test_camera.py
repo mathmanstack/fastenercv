@@ -10,10 +10,29 @@ import camera
 import app
 
 
+V2_MODES = [
+    {'size': (640, 480), 'crop_limits': (1000, 752, 1280, 960), 'bit_depth': 10},
+    {'size': (1920, 1080), 'crop_limits': (680, 692, 1920, 1080), 'bit_depth': 10},
+    {'size': (1640, 1232), 'crop_limits': (0, 0, 3280, 2464), 'bit_depth': 10},
+    {'size': (3280, 2464), 'crop_limits': (0, 0, 3280, 2464), 'bit_depth': 10},
+]
+
+
 class CameraTests(unittest.TestCase):
+    def test_wide_view_avoids_cropped_modes_even_for_small_output(self):
+        for size in [(640, 480), (1280, 720), (1280, 960)]:
+            mode = camera.widest_sensor_mode(V2_MODES, *size)
+            self.assertEqual(mode['size'], (1640, 1232))
+            self.assertEqual(mode['crop_limits'], (0, 0, 3280, 2464))
+
+    def test_wide_view_preserves_detail_for_larger_output(self):
+        self.assertEqual(camera.widest_sensor_mode(V2_MODES, 1920, 1440)['size'], (3280, 2464))
+        self.assertIsNone(camera.widest_sensor_mode([], 640, 480))
+
     def test_pi_frames_keep_opencv_color_order_and_release(self):
         frame = np.array([[[10, 20, 30]]], dtype=np.uint8)
         device = Mock()
+        device.sensor_modes = V2_MODES
         device.capture_array.return_value = frame
         constructor = Mock(return_value=device)
         with patch.dict(sys.modules, picamera2=SimpleNamespace(Picamera2=constructor)):
@@ -23,6 +42,10 @@ class CameraTests(unittest.TestCase):
             self.assertIs(captured, frame)
             self.assertEqual(device.create_video_configuration.call_args.kwargs['main'],
                              {'size': (640, 480), 'format': 'RGB888'})
+            self.assertEqual(device.create_video_configuration.call_args.kwargs['sensor'],
+                             {'output_size': (1640, 1232), 'bit_depth': 10})
+            self.assertEqual(device.create_video_configuration.call_args.kwargs['controls'],
+                             {'ScalerCrop': (0, 0, 3280, 2464)})
             cap.release()
             cap.release()
         constructor.assert_called_once_with(camera_num=0)
@@ -30,6 +53,7 @@ class CameraTests(unittest.TestCase):
 
     def test_pi_start_failure_releases_camera(self):
         device = Mock()
+        device.sensor_modes = V2_MODES
         device.start.side_effect = RuntimeError('camera busy')
         with patch.dict(sys.modules, picamera2=SimpleNamespace(Picamera2=Mock(return_value=device))):
             with self.assertRaisesRegex(RuntimeError, 'camera busy'):

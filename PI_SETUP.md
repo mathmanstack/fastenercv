@@ -24,10 +24,12 @@ cd fastenercv
 If you already cloned it, use `cd ~/fastenercv` and `git pull` instead. Then start:
 
 ```bash
-python3 app.py --camera-backend picamera2 --camera 0 --width 1280 --height 720 --host 0.0.0.0 --reset-calibration
+python3 app.py --camera-backend picamera2 --camera 0 --width 1280 --height 960 --host 0.0.0.0 --reset-calibration
 ```
 
 Open `http://PI_TAILSCALE_IP:8765` on your PC with Tailscale connected. Keep SSH open; Ctrl+C stops the app. The camera runs without a desktop preview. Calibrate using two ruler marks in the browser. On later launches omit `--reset-calibration` to keep your saved calibration. If you change resolution or camera placement, recalibrate.
+
+The Pi Camera defaults to 1280x960 output and explicitly chooses a sensor mode with the largest field of view. On Camera V2 this uses the 1640x1232 binned mode covering the full 3280x2464 sensor, avoiding the cropped 1080p and 640x480 sensor modes. Smaller output such as 640x480 is scaled from that wide sensor mode. Keep a 4:3 output aspect ratio to retain nearly the entire V2 view; 16:9 output trims the top and bottom. The browser starts with **Zoom on parts** disabled and keeps the full view after calibration; you can enable zoom manually. Recalibrate after switching from the old view.
 
 `--camera` selects the camera number from `rpicam-hello --list-cameras`; the Picamera2 backend defaults to camera 0, ignoring any old USB index saved in calibration. The browser's Camera index control also selects a camera within the chosen backend. To change backends, restart with `--camera-backend opencv` for USB or `--camera-backend picamera2` for the ribbon camera.
 

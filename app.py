@@ -158,10 +158,12 @@ if __name__=='__main__':
     parser.add_argument('--port',type=int,default=8765)
     parser.add_argument('--camera-backend',choices=('opencv','picamera2'),default='opencv',help='Use picamera2 for the ribbon-connected Raspberry Pi Camera; opencv for USB cameras')
     parser.add_argument('--camera',type=int,help='Camera index; Pi Camera defaults to 0')
-    parser.add_argument('--width',type=int,default=1920)
-    parser.add_argument('--height',type=int,default=1080)
+    parser.add_argument('--width',type=int,help='Output width (Pi Camera: 1280, USB: 1920)')
+    parser.add_argument('--height',type=int,help='Output height (Pi Camera: 960, USB: 1080); use 4:3 for the V2 full view')
     parser.add_argument('--reset-calibration',action='store_true',help='Start with no scale or parts area; calibrate in the browser')
     args=parser.parse_args()
+    if args.width is None: args.width=1280 if args.camera_backend=='picamera2' else 1920
+    if args.height is None: args.height=960 if args.camera_backend=='picamera2' else 1080
     if args.width<=0 or args.height<=0: parser.error('Width and height must be positive')
     if args.camera is not None and args.camera<0: parser.error('Camera index must be nonnegative')
     if not 1<=args.port<=65535: parser.error('Port must be between 1 and 65535')

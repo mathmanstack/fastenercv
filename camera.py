@@ -2,6 +2,19 @@
 import sys
 
 
+def widest_sensor_mode(modes, width, height):
+    """Prefer full coverage, then the smallest mode sufficient for the output."""
+    if not modes:
+        return None
+    largest_crop = max(m['crop_limits'][2] * m['crop_limits'][3] for m in modes)
+    wide = [m for m in modes
+            if m['crop_limits'][2] * m['crop_limits'][3] == largest_crop]
+    sufficient = [m for m in wide if m['size'][0] >= width and m['size'][1] >= height]
+    if sufficient:
+        return min(sufficient, key=lambda m: (m['size'][0] * m['size'][1], -m['bit_depth']))
+    return max(wide, key=lambda m: (m['size'][0] * m['size'][1], m['bit_depth']))
+
+
 class PiCamera:
     def __init__(self, index, width, height):
         try:
@@ -14,10 +27,18 @@ class PiCamera:
         self.camera = None
         try:
             self.camera = Picamera2(camera_num=index)
+            mode = widest_sensor_mode(self.camera.sensor_modes, width, height)
+            options = {}
+            if mode is not None:
+                options['sensor'] = {'output_size': mode['size'], 'bit_depth': mode['bit_depth']}
+                options['controls'] = {'ScalerCrop': mode['crop_limits']}
+                print(f"Pi Camera: sensor {mode['size']}, full-view crop {mode['crop_limits']}, "
+                      f"output {width}x{height}", flush=True)
             # Picamera2 RGB888 arrays have B,G,R byte order, as OpenCV expects.
             configuration = self.camera.create_video_configuration(
                 main={'size': (width, height), 'format': 'RGB888'},
                 buffer_count=4,
+                **options,
             )
             self.camera.configure(configuration)
             self.camera.start()
