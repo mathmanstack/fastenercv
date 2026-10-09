@@ -8,6 +8,7 @@ import cv2
 import numpy as np
 from vision import detect, size_label, Stabilizer
 from ruler import RulerTracker
+from camera import open_camera
 
 config={'camera':1,'card_width':32.,'card_height':24.,'corners':None,'threshold':32, 'scale_mode':'ruler','ruler_points':[[795,554],[1397,532]],'ruler_mm':101.6,'roi':[790,255,630,280], 'follow_ruler':True,'auto_area':True}
 settings=ROOT/'calibration.json'
@@ -71,37 +72,44 @@ def annotate(out,results):
         cv2.putText(out,f"{item['id']}: {item['size']}",(max(0,x-20),max(22,y-10)),cv2.FONT_HERSHEY_SIMPLEX,.5,(0,90,240),2)
     return out
 
-def camera_loop(width=1920,height=1080):
-    cap=None; current=None; failures=0; tracker=Stabilizer(); previous_cfg=None; ruler=RulerTracker(ROOT)
-    while not stop.is_set():
-        with lock: cfg=dict(config)
-        if current!=cfg['camera']:
-            if cap is not None: cap.release()
-            current=cfg['camera']
-            backend=cv2.CAP_DSHOW if sys.platform=='win32' else cv2.CAP_V4L2 if sys.platform.startswith('linux') else cv2.CAP_ANY
-            cap=cv2.VideoCapture(current,backend)
-            cap.set(cv2.CAP_PROP_FRAME_WIDTH,width); cap.set(cv2.CAP_PROP_FRAME_HEIGHT,height)
-        ok,frame=cap.read()
-        if not ok:
-            with lock: state['status']='Camera unavailable; close other camera apps or choose another index'
-            failures+=1
-            if failures>=6:
-                cap.release(); current=None; failures=0
-            time.sleep(.5); continue
-        failures=0
-        try:
-            if cfg!=previous_cfg: tracker=Stabilizer(); previous_cfg=cfg
-            effective=ruler.follow(frame,cfg)
-            out,results,status=analyze(frame,effective)
-            results=tracker.update(results)
-            annotate(out,results)
-            _,raw=cv2.imencode('.jpg',frame,[cv2.IMWRITE_JPEG_QUALITY,95])
-            _,jpg=cv2.imencode('.jpg',out,[cv2.IMWRITE_JPEG_QUALITY,85])
-            with lock: state.update(jpeg=jpg.tobytes(),raw=raw.tobytes(),results=results,status=status,width=frame.shape[1],height=frame.shape[0],roi=effective.get('roi'))
-        except Exception as e:
-            with lock: state['status']=str(e)
-        time.sleep(.08)
-    if cap is not None: cap.release()
+def camera_loop(width=1920,height=1080,backend='opencv'):
+    cap=None; current=None; tracker=Stabilizer(); previous_cfg=None; ruler=RulerTracker(ROOT)
+    try:
+        while not stop.is_set():
+            with lock: cfg=dict(config)
+            try:
+                if cap is None or current!=cfg['camera']:
+                    if cap is not None:
+                        cap.release(); cap=None
+                    cap=open_camera(backend,cfg['camera'],width,height)
+                    current=cfg['camera']
+                    tracker=Stabilizer(); previous_cfg=None; ruler=RulerTracker(ROOT)
+                ok,frame=cap.read()
+                if not ok: raise RuntimeError('No frame received; check the camera connection and index')
+            except Exception as e:
+                message=f'Camera unavailable ({backend}): {e}'
+                with lock: state.update(jpeg=None,raw=None,results=[],status=message)
+                print(message,file=sys.stderr,flush=True)
+                if cap is not None:
+                    try: cap.release()
+                    except Exception: pass
+                    cap=None
+                stop.wait(2)
+                continue
+            try:
+                if cfg!=previous_cfg: tracker=Stabilizer(); previous_cfg=cfg
+                effective=ruler.follow(frame,cfg)
+                out,results,status=analyze(frame,effective)
+                results=tracker.update(results)
+                annotate(out,results)
+                _,raw=cv2.imencode('.jpg',frame,[cv2.IMWRITE_JPEG_QUALITY,95])
+                _,jpg=cv2.imencode('.jpg',out,[cv2.IMWRITE_JPEG_QUALITY,85])
+                with lock: state.update(jpeg=jpg.tobytes(),raw=raw.tobytes(),results=results,status=status,width=frame.shape[1],height=frame.shape[0],roi=effective.get('roi'))
+            except Exception as e:
+                with lock: state['status']=str(e)
+            stop.wait(.08)
+    finally:
+        if cap is not None: cap.release()
 
 class Handler(BaseHTTPRequestHandler):
     def log_message(self,*args): pass
@@ -148,14 +156,17 @@ if __name__=='__main__':
     parser.add_argument('--image')
     parser.add_argument('--host',default='127.0.0.1',help='Use 0.0.0.0 for access on a trusted LAN')
     parser.add_argument('--port',type=int,default=8765)
-    parser.add_argument('--camera',type=int,help='USB camera index, usually 0 on a Pi')
+    parser.add_argument('--camera-backend',choices=('opencv','picamera2'),default='opencv',help='Use picamera2 for the ribbon-connected Raspberry Pi Camera; opencv for USB cameras')
+    parser.add_argument('--camera',type=int,help='Camera index; Pi Camera defaults to 0')
     parser.add_argument('--width',type=int,default=1920)
     parser.add_argument('--height',type=int,default=1080)
     parser.add_argument('--reset-calibration',action='store_true',help='Start with no scale or parts area; calibrate in the browser')
     args=parser.parse_args()
     if args.width<=0 or args.height<=0: parser.error('Width and height must be positive')
+    if args.camera is not None and args.camera<0: parser.error('Camera index must be nonnegative')
     if not 1<=args.port<=65535: parser.error('Port must be between 1 and 65535')
     if args.camera is not None: config['camera']=args.camera
+    elif args.camera_backend=='picamera2': config['camera']=0
     if args.reset_calibration:
         config.update(scale_mode='ruler',ruler_points=None,corners=None,roi=None)
     if args.image:
@@ -163,7 +174,12 @@ if __name__=='__main__':
         cv2.imwrite(str(ROOT/'analysis.jpg'),annotate(out,results))
         print(json.dumps({'status':status,'results':results},indent=2))
     else:
-        threading.Thread(target=camera_loop,args=(args.width,args.height),daemon=True).start()
-        print(f'Fastener CV: http://{args.host}:{args.port}',flush=True)
-        try: ThreadingHTTPServer((args.host,args.port),Handler).serve_forever()
-        finally: stop.set()
+        with ThreadingHTTPServer((args.host,args.port),Handler) as server:
+            worker=threading.Thread(target=camera_loop,args=(args.width,args.height,args.camera_backend),daemon=True)
+            worker.start()
+            print(f'Fastener CV: http://{args.host}:{args.port} ({args.camera_backend}, camera {config["camera"]})',flush=True)
+            try: server.serve_forever()
+            except KeyboardInterrupt: pass
+            finally:
+                stop.set()
+                worker.join(timeout=5)

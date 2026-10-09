@@ -1,6 +1,6 @@
 # Fastener Bench
 
-For Raspberry Pi 4 B with a USB webcam, see [PI_SETUP.md](PI_SETUP.md). The app supports Linux camera capture and optional LAN access with `--host 0.0.0.0`.
+For a ribbon-connected Raspberry Pi Camera or USB webcam, see [PI_SETUP.md](PI_SETUP.md). Use `--camera-backend picamera2` for the Pi Camera; USB cameras use the default OpenCV backend. The app supports optional LAN/Tailscale access with `--host 0.0.0.0`.
 
 Run `./start.ps1` in PowerShell, then open http://127.0.0.1:8765 .
 The default is camera index 1 (the second connected camera). Dependencies are local in `vendor`; Python is the installed KiCad Python.

@@ -1,6 +1,47 @@
-# Raspberry Pi 4 B: first camera test
+# Raspberry Pi: camera setup
 
-First milestone: run Fastener Bench on the Pi with a USB webcam, view it from your PC, and measure stationary parts reliably. Pi hardware performance has not been tested yet. The ribbon-connected Pi Camera needs a separate Picamera2 capture integration; these steps use a USB webcam.
+Fastener Bench supports ribbon-connected Raspberry Pi cameras through Picamera2 and USB webcams through OpenCV. Pi hardware performance has not been tested yet.
+
+## Quick start: ribbon-connected Pi Camera over Tailscale
+
+Use Raspberry Pi OS with the modern libcamera camera stack (Bookworm or newer recommended). Power off the Pi before connecting the camera ribbon. A Pi Zero uses a different camera ribbon connector from a Pi 4.
+
+In your Pi SSH terminal, install dependencies and confirm that the camera is detected:
+
+```bash
+sudo apt update
+sudo apt install -y python3-picamera2 python3-opencv python3-numpy rpicam-apps git
+rpicam-hello --list-cameras
+```
+
+For a fresh checkout:
+
+```bash
+git clone https://github.com/mathmanstack/fastenercv.git
+cd fastenercv
+```
+
+If you already cloned it, use `cd ~/fastenercv` and `git pull` instead. Then start:
+
+```bash
+python3 app.py --camera-backend picamera2 --camera 0 --width 1280 --height 720 --host 0.0.0.0 --reset-calibration
+```
+
+Open `http://PI_TAILSCALE_IP:8765` on your PC with Tailscale connected. Keep SSH open; Ctrl+C stops the app. The camera runs without a desktop preview. Calibrate using two ruler marks in the browser. On later launches omit `--reset-calibration` to keep your saved calibration. If you change resolution or camera placement, recalibrate.
+
+`--camera` selects the camera number from `rpicam-hello --list-cameras`; the Picamera2 backend defaults to camera 0, ignoring any old USB index saved in calibration. The browser's Camera index control also selects a camera within the chosen backend. To change backends, restart with `--camera-backend opencv` for USB or `--camera-backend picamera2` for the ribbon camera.
+
+Troubleshooting:
+
+- If no camera is listed, power off and check the ribbon seating, orientation, and camera compatibility. Confirm camera detection before starting the app.
+- If the camera is busy, close other camera applications, including any `rpicam-*` preview.
+- If Python cannot import Picamera2, use the system `python3` with the apt packages above. For a virtual environment, create it with `python3 -m venv --system-site-packages .venv`.
+- On a slower Pi, try `--width 640 --height 480` and recalibrate; lower resolution reduces measurement detail. No Pi Zero frame-rate guarantee has been measured.
+- Focus the lens on your measurement surface before calibrating. For a Camera Module 3, allow autofocus to settle; changing focus can affect measurement scale.
+
+Picamera2 provides BGR arrays using its `RGB888` format, matching the existing OpenCV detection pipeline. See the [official Picamera2 manual](https://datasheets.raspberrypi.com/camera/picamera2-manual.pdf) and [installation instructions](https://github.com/raspberrypi/picamera2#installation).
+
+## USB webcam setup
 
 ## 1. Prepare the Pi
 
@@ -30,7 +71,7 @@ exit
 In PowerShell, from this project directory:
 
 ```powershell
-scp app.py vision.py ruler.py index-v2.html YOUR_USER@fastener-pi.local:~/fastener-cv/
+scp app.py camera.py vision.py ruler.py index-v2.html YOUR_USER@fastener-pi.local:~/fastener-cv/
 ```
 
 Do not copy `vendor` (Windows binary dependencies), `start.ps1`, or the old camera calibration/reference. Linux dependencies come from apt. No KiCad installation is needed on the Pi.
