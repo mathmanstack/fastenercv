@@ -19,6 +19,89 @@ V2_MODES = [
 
 
 class CameraTests(unittest.TestCase):
+    def test_auto_prefers_pi_over_connected_usb(self):
+        frame = np.zeros((48, 64, 3), dtype=np.uint8)
+        pi = Mock()
+        pi.read.return_value = (True, frame)
+        candidates = [('picamera2', 1, 'imx219', 'Pi Camera'),
+                      ('opencv', '/dev/video0', 'usb', 'USB camera')]
+        with patch.object(camera, 'camera_candidates', return_value=candidates), \
+             patch.object(camera, 'open_camera', return_value=pi) as opener:
+            selected = camera.open_auto_camera(0, 64, 48)
+            self.assertTrue(selected.read()[0])
+            self.assertIn('imx219', selected.source_id)
+            opener.assert_called_once_with('picamera2', 1, 64, 48)
+            pi.read.assert_called_once()
+            selected.release()
+        pi.release.assert_called_once()
+
+    def test_auto_skips_failed_pi_and_usb_metadata_node(self):
+        bad = Mock()
+        bad.read.return_value = (False, None)
+        usb = Mock()
+        usb.read.return_value = (True, np.zeros((48, 64, 3), dtype=np.uint8))
+        candidates = [('picamera2', 0, 'imx219', 'Pi Camera'),
+                      ('opencv', '/dev/video0', 'usb0', 'USB camera 0'),
+                      ('opencv', '/dev/video1', 'usb1', 'USB camera 1')]
+        with patch.object(camera, 'camera_candidates', return_value=candidates), \
+             patch.object(camera, 'open_camera', side_effect=[RuntimeError('not connected'), bad, usb]):
+            selected = camera.open_auto_camera(0, 64, 48)
+            self.assertEqual(selected.label, 'USB camera 1')
+        bad.release.assert_called_once()
+
+    def test_auto_no_cameras_reports_retriable_error(self):
+        with patch.object(camera, 'camera_candidates', return_value=[]):
+            with self.assertRaisesRegex(RuntimeError, 'no Pi Camera or USB webcam detected'):
+                camera.open_auto_camera(0, 64, 48)
+
+    def test_discovery_does_not_mistake_libcamera_usb_for_pi(self):
+        api = Mock()
+        api.global_camera_info.return_value = [
+            {'Id': '/base/usb@1/camera', 'Model': 'Webcam', 'Num': 7},
+            {'Id': '/base/i2c/imx219@10', 'Model': 'imx219', 'Num': 4},
+        ]
+        with patch.dict(sys.modules, picamera2=SimpleNamespace(Picamera2=api)), \
+             patch.object(camera.sys, 'platform', 'linux'), \
+             patch.object(camera.Path, 'glob', return_value=[]):
+            candidates = list(camera.camera_candidates(0))
+        self.assertEqual(len(candidates), 1)
+        self.assertEqual(candidates[0][:2], ('picamera2', 1))
+
+    def test_auto_switch_invalidates_calibration(self):
+        event = threading.Event()
+        cap = Mock(source_id='opencv:usb:64x48', label='USB camera')
+        cap.read.return_value = (True, np.zeros((48, 64, 3), dtype=np.uint8))
+        cfg = dict(app.config, camera_source='picamera2:imx219:64x48',
+                   ruler_points=[[0, 0], [100, 0]], roi=[0, 0, 10, 10])
+        with patch.object(app, 'stop', event), \
+             patch.object(event, 'wait', side_effect=lambda _: event.set()), \
+             patch.object(app, 'open_camera', return_value=cap), \
+             patch.object(app, 'config', cfg), patch.object(app, 'state', {}):
+            app.camera_loop(64, 48, 'auto')
+            self.assertIsNone(cfg['ruler_points'])
+            self.assertIsNone(cfg['roi'])
+            self.assertEqual(cfg['camera_source'], cap.source_id)
+            self.assertTrue(app.state['status'].startswith('USB camera |'))
+
+    def test_missing_picamera_still_discovers_usb_and_skips_isp(self):
+        usb = Mock(name='usbnode')
+        usb.name = 'video2'
+        isp = Mock(name='ispnode')
+        isp.name = 'video10'
+        # Path division resolves each node's sysfs device link.
+        usb = unittest.mock.MagicMock(wraps=usb)
+        usb.name = 'video2'
+        usb.__truediv__.return_value.resolve.return_value = '/sys/devices/platform/usb1/1-1'
+        isp = unittest.mock.MagicMock(wraps=isp)
+        isp.name = 'video10'
+        isp.__truediv__.return_value.resolve.return_value = '/sys/devices/platform/bcm2835-codec'
+        with patch.dict(sys.modules, picamera2=None), \
+             patch.object(camera.sys, 'platform', 'linux'), \
+             patch.object(camera.Path, 'glob', return_value=[isp, usb]):
+            candidates = list(camera.camera_candidates(0))
+        self.assertEqual(len(candidates), 1)
+        self.assertEqual(candidates[0][:2], ('opencv', '/dev/video2'))
+
     def test_wide_view_avoids_cropped_modes_even_for_small_output(self):
         for size in [(640, 480), (1280, 720), (1280, 960)]:
             mode = camera.widest_sensor_mode(V2_MODES, *size)

@@ -12,6 +12,7 @@ from camera import open_camera
 
 config={'camera':1,'card_width':32.,'card_height':24.,'corners':None,'threshold':32, 'scale_mode':'ruler','ruler_points':[[795,554],[1397,532]],'ruler_mm':101.6,'roi':[790,255,630,280], 'follow_ruler':True,'auto_area':True}
 settings=ROOT/'calibration.json'
+config['camera_source']=None
 if settings.exists():
     config.update(json.loads(settings.read_text()))
 lock=threading.Lock()
@@ -82,6 +83,12 @@ def camera_loop(width=1920,height=1080,backend='opencv'):
                     if cap is not None:
                         cap.release(); cap=None
                     cap=open_camera(backend,cfg['camera'],width,height)
+                    if backend=='auto':
+                        with lock:
+                            if config.get('camera_source')!=cap.source_id:
+                                config.update(scale_mode='ruler',ruler_points=None,corners=None,roi=None,
+                                              camera_source=cap.source_id)
+                            cfg=dict(config)
                     current=cfg['camera']
                     tracker=Stabilizer(); previous_cfg=None; ruler=RulerTracker(ROOT)
                 ok,frame=cap.read()
@@ -100,6 +107,7 @@ def camera_loop(width=1920,height=1080,backend='opencv'):
                 if cfg!=previous_cfg: tracker=Stabilizer(); previous_cfg=cfg
                 effective=ruler.follow(frame,cfg)
                 out,results,status=analyze(frame,effective)
+                if backend=='auto': status=f'{cap.label} | {status}'
                 results=tracker.update(results)
                 annotate(out,results)
                 _,raw=cv2.imencode('.jpg',frame,[cv2.IMWRITE_JPEG_QUALITY,95])
@@ -156,19 +164,20 @@ if __name__=='__main__':
     parser.add_argument('--image')
     parser.add_argument('--host',default='127.0.0.1',help='Use 0.0.0.0 for access on a trusted LAN')
     parser.add_argument('--port',type=int,default=8765)
-    parser.add_argument('--camera-backend',choices=('opencv','picamera2'),default='opencv',help='Use picamera2 for the ribbon-connected Raspberry Pi Camera; opencv for USB cameras')
-    parser.add_argument('--camera',type=int,help='Camera index; Pi Camera defaults to 0')
-    parser.add_argument('--width',type=int,help='Output width (Pi Camera: 1280, USB: 1920)')
-    parser.add_argument('--height',type=int,help='Output height (Pi Camera: 960, USB: 1080); use 4:3 for the V2 full view')
+    parser.add_argument('--camera-backend',choices=('auto','opencv','picamera2'),default='auto',help='Default: Pi Camera first, then USB webcams; use picamera2 or opencv to force one backend')
+    parser.add_argument('--camera',type=int,help='Camera index; in auto mode, preferred USB index (Pi Camera always has priority)')
+    parser.add_argument('--width',type=int,help='Output width (auto/Pi Camera: 1280, forced USB: 1920)')
+    parser.add_argument('--height',type=int,help='Output height (auto/Pi Camera: 960, forced USB: 1080); use 4:3 for the V2 full view')
     parser.add_argument('--reset-calibration',action='store_true',help='Start with no scale or parts area; calibrate in the browser')
     args=parser.parse_args()
-    if args.width is None: args.width=1280 if args.camera_backend=='picamera2' else 1920
-    if args.height is None: args.height=960 if args.camera_backend=='picamera2' else 1080
+    if args.width is None: args.width=1920 if args.camera_backend=='opencv' else 1280
+    if args.height is None: args.height=1080 if args.camera_backend=='opencv' else 960
     if args.width<=0 or args.height<=0: parser.error('Width and height must be positive')
     if args.camera is not None and args.camera<0: parser.error('Camera index must be nonnegative')
     if not 1<=args.port<=65535: parser.error('Port must be between 1 and 65535')
     if args.camera is not None: config['camera']=args.camera
-    elif args.camera_backend=='picamera2': config['camera']=0
+    elif args.camera_backend in ('auto','picamera2'): config['camera']=0
+    if args.camera_backend!='auto': config['camera_source']=None
     if args.reset_calibration:
         config.update(scale_mode='ruler',ruler_points=None,corners=None,roi=None)
     if args.image:

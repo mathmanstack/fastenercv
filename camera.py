@@ -1,5 +1,6 @@
 """Camera sources returning OpenCV-compatible BGR frames."""
 import sys
+from pathlib import Path
 
 
 def widest_sensor_mode(modes, width, height):
@@ -56,7 +57,74 @@ class PiCamera:
             camera.close()
 
 
+def camera_candidates(preferred_index):
+    """CSI cameras first; USB entries in libcamera are not Pi cameras."""
+    try:
+        from picamera2 import Picamera2
+        for index, info in enumerate(Picamera2.global_camera_info()):
+            identity = info.get('Id', '')
+            if identity and '/usb' not in identity.lower():
+                yield 'picamera2', index, identity, f"Pi Camera ({info.get('Model', index)})"
+    except (ImportError, RuntimeError, OSError) as exc:
+        print(f'Pi Camera discovery: {exc}; looking for USB cameras', flush=True)
+
+    if sys.platform.startswith('linux'):
+        # Scan actual USB devices, excluding the Pi's codec/ISP video nodes.
+        nodes = sorted(Path('/sys/class/video4linux').glob('video*'),
+                       key=lambda p: int(p.name[5:]))
+        nodes.sort(key=lambda p: int(p.name[5:]) != preferred_index)
+        for node in nodes:
+            device = (node / 'device').resolve()
+            if '/usb' in str(device).lower():
+                path = '/dev/' + node.name
+                yield 'opencv', path, str(device), f'USB camera ({path})'
+    else:
+        for index in dict.fromkeys([preferred_index, *range(10)]):
+            yield 'opencv', index, str(index), f'Webcam ({index})'
+
+
+class SelectedCamera:
+    def __init__(self, capture, frame, source_id, label):
+        self.capture = capture
+        self.first_frame = frame
+        self.source_id = source_id
+        self.label = label
+
+    def read(self):
+        if self.first_frame is not None:
+            frame, self.first_frame = self.first_frame, None
+            return True, frame
+        return self.capture.read()
+
+    def release(self):
+        self.capture.release()
+
+
+def open_auto_camera(index, width, height):
+    errors = []
+    for backend, number, identity, label in camera_candidates(index):
+        cap = None
+        try:
+            cap = open_camera(backend, number, width, height)
+            ok, frame = cap.read()
+            if not ok or frame is None or frame.size == 0:
+                raise RuntimeError('no frame received')
+            source_id = f'{backend}:{identity}:{frame.shape[1]}x{frame.shape[0]}'
+            print(f'Using {label}', flush=True)
+            return SelectedCamera(cap, frame, source_id, label)
+        except Exception as exc:
+            errors.append(f'{label}: {exc}')
+            print(f'{label} unavailable: {exc}', flush=True)
+            if cap is not None:
+                try: cap.release()
+                except Exception: pass
+    detail = '; '.join(errors) if errors else 'no Pi Camera or USB webcam detected'
+    raise RuntimeError(detail)
+
+
 def open_camera(backend, index, width, height):
+    if backend == 'auto':
+        return open_auto_camera(index, width, height)
     if backend == 'picamera2':
         return PiCamera(index, width, height)
     if backend != 'opencv':

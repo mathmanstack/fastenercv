@@ -1,9 +1,9 @@
 # Fastener Bench
 
-For a ribbon-connected Raspberry Pi Camera or USB webcam, see [PI_SETUP.md](PI_SETUP.md). Use `--camera-backend picamera2` for the Pi Camera; USB cameras use the default OpenCV backend. The app supports optional LAN/Tailscale access with `--host 0.0.0.0`.
+For a ribbon-connected Raspberry Pi Camera or USB webcam, see [PI_SETUP.md](PI_SETUP.md). By default the app tries the Pi Camera first, then scans for a working USB webcam. Use `--camera-backend picamera2` or `--camera-backend opencv` to force a backend. The app supports optional LAN/Tailscale access with `--host 0.0.0.0`.
 
 Run `./start.ps1` in PowerShell, then open http://127.0.0.1:8765 .
-The default is camera index 1 (the second connected camera). Dependencies are local in `vendor`; Python is the installed KiCad Python.
+Automatic selection prefers the Pi Camera, then USB index 0 and other available webcams. On Windows, dependencies are local in `vendor`; Python is the installed KiCad Python.
 
 The current setup uses the protractor's ruler edge. Click **Calibrate ruler: 2 marks**, enter the real distance in mm, and click those marks in the full camera view. The 1-inch to 5-inch span is 101.6 mm. Calibration is saved locally. A visual ruler tracker follows modest translations; if it loses the reference, dimensions stop until recalibration. Camera zoom, focus, rotation, perspective changes or a different ruler require recalibration. The two-point ruler calibration assumes the camera faces the surface squarely and does not correct perspective.
 
